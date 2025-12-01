@@ -1,10 +1,18 @@
 #include "webgpu-utils.h"
 
 #include <webgpu/webgpu.h>
+#ifdef WEBGPU_BACKEND_WGPU
+#   include <webgpu/wgpu.h>
+#endif // WEBGPU_BACKEND_WGPU
+
+#ifdef __EMSCRIPTEN__
+#   include <emscripten.h>
+#endif // __EMSCRIPTEN__
+
 #include <stdio.h>
 
 /**
- * Error callback for WGPUDeviceDescriptor.deviceLostCallback
+ * Callback for WGPUDeviceDescriptor.deviceLostCallback
  */
 static void onDeviceLost(const WGPUDevice* device,
                          WGPUDeviceLostReason reason,
@@ -22,7 +30,8 @@ static void onDeviceLost(const WGPUDevice* device,
 }
 
 /**
- * Invoked whenever there is an error in the use of the device.
+ * Error callback invoked whenever there is an error in the use 
+ * of the device.
  *
  * NOTE: Put a breakpoint in here.
  */
@@ -32,11 +41,22 @@ static void onDeviceError(WGPUErrorType type,
 {
     (void)pUserData; // unused
 
-    fprintf(stderr, "Uncaptured device error: type %d", (int)type);
+    fprintf(stderr, "Uncaptured device error: type %d\n", (int)type);
     if (message) {
-        fprintf(stderr, " (%s)", message);
+        fprintf(stderr, " (%s)\n", message);
     }
     fprintf(stderr, "\n");
+}
+
+/**
+ * Callback invoked on COMMAND QUEUE completion
+ */
+void onQueueWorkDone(WGPUQueueWorkDoneStatus status, 
+                     void* pUserData)
+{
+    (void)pUserData; // unused
+
+    printf("Queued work finished with status: %d\n", (int)status);
 }
 
 int main (){
@@ -182,6 +202,60 @@ int main (){
 
     // Inspect the adapter
     inspectDevice(device);
+
+
+    /**
+     * CREATE COMMAND QUEUE
+     *
+     * A WGPUCommandBuffer object cannot be manually created. The buffer uses a
+     * special format that is left to the discretion of the user's driver/hardware.
+     * A command encoder must be used to create this buffer.
+     */
+    WGPUQueue queue = wgpuDeviceGetQueue(device);
+    // Set COMMAND QUEUE work done callback
+    wgpuQueueOnSubmittedWorkDone(queue, onQueueWorkDone, NULL /* pUserData */);
+    // Command encoder
+    WGPUCommandEncoderDescriptor encoderDesc = {0};
+    encoderDesc.nextInChain = NULL;
+    encoderDesc.label = "My command encoder";
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+
+    // Debug placeholder for encoder instruction (no object to manipulate yet)
+    wgpuCommandEncoderInsertDebugMarker(encoder, "Do one thing");
+    wgpuCommandEncoderInsertDebugMarker(encoder, "Do another thing");
+
+    // Generate command buffer using encoder
+    WGPUCommandBufferDescriptor cmdBufferDescriptor = {0};
+    cmdBufferDescriptor.nextInChain = NULL;
+    cmdBufferDescriptor.label = "Command buffer";
+    WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
+
+    // Release encoder
+    wgpuCommandEncoderRelease(encoder); 
+
+    // Finally, submit command queue
+    printf("Submitting command...\n");
+    wgpuQueueSubmit(queue, 1, &command);
+    wgpuCommandBufferRelease(command);
+    printf("Command submitted.\n");
+    // Must wait or else we destroy the device before command submission. 
+    for (int i = 0; i < 5; ++i) {
+        printf("Tick/Poll device...\n");
+#if defined(WEBGPU_BACKEND_DAWN)
+        wgpuDeviceTick(device);
+#elif defined(WEBGPU_BACKEND_WGPU)
+        wgpuDevicePoll(device, false, NULL);
+#elif defined(WEBGPU_BACKEND_EMSCRIPTEN)
+        emscripten_sleep(100);
+#endif
+    }
+
+
+
+    /* DESTROY COMMAND QUEUE
+     *
+     */
+    wgpuQueueRelease(queue);
 
     /* DESTROY DEVICE
      *

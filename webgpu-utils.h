@@ -39,7 +39,7 @@ WGPUDevice requestDeviceSync(WGPUAdapter adapter,
 void inspectAdapter(WGPUAdapter adapter);
 
 /**
- * Basically the same as inspectAdapter, see comments for differences.
+ * Basically the same as inspectAdapter.
  */
 void inspectDevice(WGPUDevice device);
 
