@@ -26,7 +26,10 @@ add_subdirectory(webgpu)
 # =========================
 # App target
 # =========================
-add_executable(App main.c)
+add_executable(App 
+               main.c
+               webgpu-utils.c
+               )
 
 # Link against the webgpu target
 target_link_libraries(App PRIVATE webgpu)
