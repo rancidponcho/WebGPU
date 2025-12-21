@@ -1,6 +1,8 @@
 #ifndef WEBGPU_UTILS_H
 #define WEBGPU_UTILS_H
 
+#include "global.h"
+
 #include <webgpu/webgpu.h>
 
 /**
@@ -42,5 +44,7 @@ void inspectAdapter(WGPUAdapter adapter);
  * Basically the same as inspectAdapter.
  */
 void inspectDevice(WGPUDevice device);
+
+bool initWebGPU(Context* context);
 
 #endif // WEBGPU_UTILS_H
