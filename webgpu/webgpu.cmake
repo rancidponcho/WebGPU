@@ -1,41 +1,60 @@
+cmake_minimum_required(VERSION 3.24)
+project(WebGPUProject)
 
-cmake_minimum_required(VERSION 3.24) # 3.24+ adds better FetchContent support
-project(MyWebGPUProject)
+# 1. Selection Logic
+set(WEBGPU_BACKEND "DAWN" CACHE STRING "Backend implementation: EMSCRIPTEN, WGPU, or DAWN")
+string(TOUPPER ${WEBGPU_BACKEND} WEBGPU_BACKEND_U)
 
-# --- Dawn Build Configuration ---
-# These MUST be set before FetchContent_MakeAvailable to override Dawn's defaults
-set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
-set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
-set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-set(DAWN_BUILD_NODE_BINDINGS OFF CACHE BOOL "" FORCE)
-set(TINT_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
-set(TINT_BUILD_AST_FUZZER OFF CACHE BOOL "" FORCE)
-set(TINT_BUILD_IR_FUZZER OFF CACHE BOOL "" FORCE)
-set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(TINT_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-
-# Use standard FetchContent (no more deprecated manual download macros)
 include(FetchContent)
 
-FetchContent_Declare(
-    dawn
-    GIT_REPOSITORY https://dawn.googlesource.com/dawn
-    GIT_TAG        chromium/6842 # Using a stable Chromium-branch tag is safer than 'main'
-    GIT_SHALLOW    ON
-)
+# ------------------------------------------------------------------------------
+# 2. DAWN BACKEND (Official Google Repo)
+# ------------------------------------------------------------------------------
+if (WEBGPU_BACKEND_U STREQUAL "DAWN")
+    # Force flags to avoid Protobuf/Fuzzers before fetching
+    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
 
-# This replaces the old "MakeAvailable" logic and applies our flags
-FetchContent_MakeAvailable(dawn)
+    FetchContent_Declare(
+        dawn
+        GIT_REPOSITORY https://dawn.googlesource.com/dawn
+        GIT_TAG        chromium/6842
+        GIT_SHALLOW    ON
+    )
+    FetchContent_MakeAvailable(dawn)
+    
+    set(WEBGPU_LIBRARIES dawn::webgpu_cpp dawn::dawn_native)
 
-# --- Your Application ---
+# ------------------------------------------------------------------------------
+# 3. WGPU-NATIVE BACKEND (Official wgpu-native)
+# ------------------------------------------------------------------------------
+elseif (WEBGPU_BACKEND_U STREQUAL "WGPU")
+    FetchContent_Declare(
+        wgpu_native
+        GIT_REPOSITORY https://github.com/gfx-rs/wgpu-native.git
+        GIT_TAG        v0.19.4.1 # Or your preferred version
+        GIT_SHALLOW    ON
+    )
+    FetchContent_MakeAvailable(wgpu_native)
+    set(WEBGPU_LIBRARIES wgpu_native)
+
+# ------------------------------------------------------------------------------
+# 4. EMSCRIPTEN BACKEND
+# ------------------------------------------------------------------------------
+elseif (EMSCRIPTEN OR WEBGPU_BACKEND_U STREQUAL "EMSCRIPTEN")
+    # Emscripten provides WebGPU headers natively; no fetch usually required 
+    # but we can add an interface library if needed for consistency.
+    message(STATUS "Using Emscripten built-in WebGPU")
+endif()
+
+# ------------------------------------------------------------------------------
+# 5. Application Setup
+# ------------------------------------------------------------------------------
 add_executable(${PROJECT_NAME} main.cpp)
 
-# Link against dawn::webgpu_cpp (the C++ wrapper) or dawn::dawn_native
-# Note: Dawn's targets are namespaced
-target_link_libraries(${PROJECT_NAME} PRIVATE dawn::webgpu_cpp dawn::dawn_native)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${WEBGPU_LIBRARIES})
 
-# Set C++ standard (Dawn requires C++17 or 20)
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
